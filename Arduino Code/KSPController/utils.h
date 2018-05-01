@@ -4,8 +4,8 @@ void light_flash_pwm(int pin, unsigned long *timer, int *state, int flashtime, i
 void light_dim_ctl(int pin, int cond, int on_val, int off_val);
 void mux_Tx(int adr, int reg, byte data);
 void mux_Rx(int adr, int reg, int numbytes, byte *data);
-void pad(char* text);
 int mod(int x, int m);
+void printBits(byte myByte);
 
 
 void sys_error(int code) {
@@ -13,6 +13,8 @@ void sys_error(int code) {
      and blocks all other functions
   */
   while (true) {
+    digitalWrite(c_power_led_R_pin, HIGH);
+    digitalWrite(c_power_led_G_pin, LOW);
     for (int i = 0; i < code; i++) {
       digitalWrite(c_error_led_pin, HIGH);
       delay(200);
@@ -48,14 +50,6 @@ void light_flash_pwm(int pin, unsigned long *timer, int *state, int flashtime, i
   }
 }
 
-void light_dim_ctl(int pin, int cond, int on_val, int off_val) {
-  if (cond) {
-    analogWrite(pin, on_val);
-  }
-  else {
-    analogWrite(pin, off_val);
-  }
-}
 
 void mux_Tx(int adr, int reg, byte data) {
   /* This function will send data to a MCP23017 chip */
@@ -74,19 +68,17 @@ void mux_Rx(int adr, int reg, int numbytes, byte *data) {
   *data = Wire.read();
 }
 
-void pad(char* text) {
-  char format[10];
-  int offset;
-  char temp[13];
-
-  offset = (12 - strlen(text)) / 2 + strlen(text);
-  sprintf(format, "%%+%ds", offset);
-  sprintf(temp, format, text);
-  sprintf(text, "%-12s", temp);
-}
-
 int mod(int x, int m) {
   int r = x % m;
   return r < 0 ? r + m : r;
+}
+
+void printBits(byte myByte){
+ for(byte mask = 0x80; mask; mask >>= 1){
+   if(mask  & myByte)
+       Serial.print('1');
+   else
+       Serial.print('0');
+ }
 }
 
