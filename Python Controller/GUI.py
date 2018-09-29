@@ -157,7 +157,7 @@ class Application:
             else:  # if there is a valid status bit, we must be connected
                 self.panel_status.set("Connected")
                 self.styles.configure('Ind.TLabel', background='green')
-                if data_array[0] == self.status_prev:  # if the heartbeat is not increase, start a counter
+                if data_array[20] == self.status_prev:  # if the heartbeat is not increase, start a counter
                     self.discon_counter = self.discon_counter + 1
                 else:  # if it is increasing, reset the counter
                     self.discon_counter = 0
@@ -165,7 +165,7 @@ class Application:
                 if self.discon_counter >= 20:  # if the counter exceed the limit, trigger the disconnect.
                     self.connect_panel(data_array, msgq)
 
-            self.status_prev = data_array[0]  # keep the previous status byte for comparison.
+            self.status_prev = data_array[20]  # keep the previous status byte for comparison.
         else:
             self.discon_counter = 0
 

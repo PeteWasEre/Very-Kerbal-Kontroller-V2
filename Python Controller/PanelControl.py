@@ -23,50 +23,73 @@ def panel_control(data_array, mq):
     gear_status = 0
     heartbeat = 0
 
+    # STATE = PANEL CONN - Connect to the panel
+    while n_program_state == 1:
+        mq.put((0, 'Connecting to the panel....'))
+        try:
+            ser = serial.Serial('COM3', 115200, timeout=0.1)
+            mq.put((0, 'Connected to the panel'))
+            time.sleep(3)  # serial needs a  bit of time to initialise, otherwise later code - esp CNIA fails
+            n_program_state = 2
+        except serial.serialutil.SerialException:
+            mq.put((1, 'Could not connect to the panel'))
+            time.sleep(5)  # to avoid spamming the message queue
+            pass
+
+    # STATE = GAME CONN - Connect to the KRPC Server
+    while n_program_state == 2:
+        mq.put((0, 'Connecting to the game server....'))
+        try:
+            conn = krpc.connect(name='Game Controller')
+            mq.put((0, 'Connected to the game server'))
+            n_program_state = 3
+        except ConnectionRefusedError:
+            mq.put((1, 'Could not connect to the game server'))
+            time.sleep(5)  # to avoid spamming the message queue
+            pass
+
     while 1:
         if time.time() - t_frame_start_time >= c_loop_frame_rate:
             # record the start of the processing so we can get timing data
             t_frame_start_time = time.time()
 
-            # STATE = PANEL CONN - Connect to the panel
-            if n_program_state == 1:
-                mq.put((0, 'Connecting to the panel....'))
-                try:
-                    ser = serial.Serial('COM3', 115200, timeout=0.1)
-                    mq.put((0, 'Connected to the panel'))
-                    time.sleep(1)  # serial needs a  bit of time to initialise, otherwise later code - esp CNIA fails
-                    n_program_state = 2
-                except serial.serialutil.SerialException:
-                    mq.put((1, 'Could not connect to the panel'))
-                    time.sleep(5)  # to avoid spamming the message queue
-                    pass
-
-            # STATE = GAME CONN - Connect to the KRPC Server
-            if n_program_state == 2:
-                mq.put((0, 'Connecting to the game server....'))
-                try:
-                    conn = krpc.connect(name='Game Controller')
-                    mq.put((0, 'Connected to the game server'))
-                    n_program_state = 3
-                except ConnectionRefusedError:
-                    mq.put((1, 'Could not connect to the game server'))
-                    pass
-
             # STATE = LINKING - Link to the active Vessel
-            if n_program_state == 3 and conn.krpc.current_game_scene == conn.krpc.current_game_scene.flight:
-                mq.put((0, 'Connecting to the vessel....'))
-                try:
-                    vessel = conn.space_center.active_vessel
-                    mq.put((0, 'Linked to ' + vessel.name))
-                    n_program_state = 4
-                except krpc.client.RPCError:
-                    mq.put((1, 'Could not connect to a vessel'))
-                    pass
+            if n_program_state == 3:
+                # Send data to the arduino but request no action  - command byte = 0x00
+                ba_output_buffer = bytearray([0x00])
+                ser.write(ba_output_buffer)
+
+                if conn.krpc.current_game_scene == conn.krpc.current_game_scene.flight:
+                    mq.put((0, 'Connecting to the vessel....'))
+                    try:
+                        vessel = conn.space_center.active_vessel
+                        mq.put((0, 'Linked to ' + vessel.name))
+                        n_program_state = 4
+                    except krpc.client.RPCError:
+                        mq.put((1, 'Could not connect to a vessel'))
+                        pass
 
             # STATE = Perform CNIA
             if n_program_state == 4:
                 mq.put((0, 'Starting CNIA...'))
-                cnia(ser, conn, vessel)
+                cnia_repeat = True
+
+                while cnia_repeat:
+                    # Send data to the arduino request it to process inputs  - command byte = 0x01
+                    ba_output_buffer = bytearray([0x01])
+                    ser.write(ba_output_buffer)
+
+                    # Make sure the Arduino has responded
+                    while ser.in_waiting != c_input_buffer_size:
+                        pass
+
+                    # read back the data from the arduino
+                    ba_input_buffer = ser.read(c_input_buffer_size)
+
+                    # check CNIA
+                    cnia_repeat = cnia(ba_input_buffer, conn, vessel)
+
+                conn.ui.message('CNIA Complete', duration=5)
                 mq.put((0, 'CNIA Complete'))
                 n_program_state = 5
 
@@ -119,12 +142,12 @@ def panel_control(data_array, mq):
             if n_program_state == 6:
                 try:  # catch RPC errors as they generally result from a scene change. Make more specific KRPC issue 256
 
-                    # Send data to the arduino request it to process inputs  - command byte = 0x00
-                    ba_output_buffer = bytearray([0x00])
+                    # Send data to the arduino request it to process inputs  - command byte = 0x01
+                    ba_output_buffer = bytearray([0x01])
                     ser.write(ba_output_buffer)
 
-                    # Now while the Arduino is busy with inputs we processes the outputs - command byte = 0x01
-                    ba_output_buffer = bytearray([0x01])
+                    # Now while the Arduino is busy with inputs we processes the outputs - command byte = 0x02
+                    ba_output_buffer = bytearray([0x02])
                     output_mapping(ba_output_buffer, conn, gear_status, sas_overide)
 
                     # Make sure the Arduino has responded
@@ -328,9 +351,9 @@ def panel_control(data_array, mq):
                         for i in range(len(ba_input_buffer)):
                             data_array[i] = ba_input_buffer[i]
 
-                        # add a hearbeat to the status bit so the GUI can tell if we are alive
+                        # add a heartbeat to the status bit so the GUI can tell if we are alive
                         heartbeat = (heartbeat + 1) % 8
-                        data_array[0] = data_array[0] | heartbeat << 2
+                        data_array[20] = heartbeat
 
                 except krpc.client.RPCError:
                     n_program_state = 3

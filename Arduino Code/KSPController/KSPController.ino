@@ -106,55 +106,87 @@ void loop() {
   /* work out if we are ready for the next frame. As this is real time we need to allow
     for the processing time and run a fixed start delay
   */
-  t_current_frame = millis();  /* frame start time */
-  t_frame_time = t_current_frame - t_last_frame;  /* time since last frame */
-  t_run_time = t_current_frame - t_power_on; /* keep track of time since power on */
-
-  if (t_frame_time >= c_frame_time_target) { /* its time to run */
-    t_last_frame = t_current_frame; /* update the last frame time */
-
-    /* check if data received, if so read it in */
-    if (Serial.available() == sizeof(x_inputbuffer)) {
-      Serial.readBytes(x_inputbuffer, sizeof(x_inputbuffer));
-      if (!bitRead(x_inputbuffer[0],0)) {
-        f_data_requested = TRUE;
-      }
-      else if (bitRead(x_inputbuffer[0],0)) {
-        f_data_received = TRUE;
-      }
-      t_last_serial_time = 0;
+//  t_current_frame = millis();  /* frame start time */
+//  t_frame_time = t_current_frame - t_last_frame;  /* time since last frame */
+//  t_run_time = t_current_frame - t_power_on; /* keep track of time since power on */
+//
+//  if (t_frame_time >= c_frame_time_target) { /* its time to run */
+//    t_last_frame = t_current_frame; /* update the last frame time */
+//
+//    /* check if data received, if so read it in */
+//    if (Serial.available() == sizeof(x_inputbuffer)) {
+//      Serial.readBytes(x_inputbuffer, sizeof(x_inputbuffer));
+//      if (!bitRead(x_inputbuffer[0],0)) {
+//        f_data_requested = TRUE;
+//      }
+//      else if (bitRead(x_inputbuffer[0],0)) {
+//        f_data_received = TRUE;
+//      }
+//      t_last_serial_time = 0;
+//    }
+//    else {
+//      t_last_serial_time += t_frame_time;
+//    }
+  
+  /* frame time */
+  t_frame_time = millis() - t_current_frame;
+  t_current_frame = millis(); 
+  
+  /* check if data received, if so read it in */
+  if (Serial.available() == sizeof(x_inputbuffer)) {
+    Serial.readBytes(x_inputbuffer, sizeof(x_inputbuffer));
+    if (bitRead(x_inputbuffer[0],0)) {
+      f_data_requested = TRUE;
     }
-    else {
-      t_last_serial_time += t_frame_time;
+    else if (bitRead(x_inputbuffer[0],1)) {
+      f_data_received = TRUE;
     }
-
+    t_last_serial_time = t_current_frame;
+  }
 
 #ifdef DEBUG   /* in debug mode ignore serial timeouts, run regardless of python connection */
-    if (0) {
+  if (0) {
 #else
-    if (t_last_serial_time >= c_serial_timeout) {
+  if (t_current_frame >= (t_last_serial_time + c_serial_timeout)) {
 #endif
-      /* no data from the main program, turn off all the lights and flash the error light */
-      digitalWrite(c_sys_light_enable_1, LOW);
-      digitalWrite(c_sys_light_enable_2, LOW);
-      light_flash_pwm(c_error_led_pin, &t_error_light, &f_error_light_state, c_error_light_flash, c_error_flash_intensity);
+    /* no data from the main program, turn off all the lights and flash the error light */
+    digitalWrite(c_sys_light_enable_1, LOW);
+    digitalWrite(c_sys_light_enable_2, LOW);
+    light_flash_pwm(c_error_led_pin, &t_error_light, &f_error_light_state, c_error_light_flash, c_error_flash_intensity);
+  }
+  else { /* serial hasn't timed out, proceed as normal */
+    f_serial_state = true;
+
+    /* turn off the error light, if it was flashing on when serial started it stays on! */
+    digitalWrite(c_error_led_pin, LOW);
+
+    /* re-enable the system lights */
+    analogWrite(c_sys_light_enable_1, c_light_brigtness);
+    analogWrite(c_sys_light_enable_2, c_light_brigtness);
+
+    /* if requested to, write the outputs to the lights  */
+#ifdef DEBUG /* in debug mode work regardless of serial */
+    if (1) {
+#else
+    if (f_data_received) {
+#endif
+      write_outputs(x_inputbuffer, x_databuffer);
+      f_data_received = FALSE;
     }
-    else { /* serial hasn't timed out, proceed as normal */
-      f_serial_state = true;
 
-      /* turn off the error light, if it was flashing on when serial started it stays on! */
-      digitalWrite(c_error_led_pin, LOW);
-
-      /* re-enable the system lights */
-      analogWrite(c_sys_light_enable_1, c_light_brigtness);
-      analogWrite(c_sys_light_enable_2, c_light_brigtness);
-
+    
+    /* if requested to, read and send back the inputs */
+#ifdef DEBUG /* in debug mode work regardless of serial */
+    if (1) {
+#else
+    if (f_data_requested) {
+#endif
       /* set the status byte */
       x_databuffer[0] = B00000001; /* bit 1 is true when alive */
-
+  
       /* read all the inputs into the databuffer */
       read_inputs(&x_databuffer[1]);
-
+  
 #ifdef DEBUG   /* Print all the inputs to serial. */
       for (i = 0; i < 10; i++) {
         printBits(x_databuffer[i]);
@@ -165,44 +197,31 @@ void loop() {
         Serial.print(" ");
       }
 #endif
-
-      /* write the outputs to the lights  */
-#ifdef DEBUG /* in debug mode work regardless of serial */
-      if (1) {
-#else
-      if (f_data_received) {
-#endif
-        write_outputs(x_inputbuffer, x_databuffer);
-        f_data_received = FALSE;
-      }
-
+  
       /* check for high temp */
       if (x_databuffer[10] > c_temp_max) {
         sys_error(c_overtemp_error_code);
       }
 
-    }
-    /* measure the processing time, signal if an overun occurs. add actual frame time to data buffer */
-    t_frame_actual = millis() - t_current_frame;
-    x_databuffer[18] = t_frame_actual;
+      /* measure the processing time, signal if an overun occurs. add actual frame time to data buffer */
+      t_frame_actual = millis() - t_current_frame;
+      x_databuffer[18] = t_frame_actual;
 
 #ifdef DEBUG
-    Serial.println(t_frame_actual);
+      Serial.println(t_frame_actual);
 #endif
 
-    if (t_frame_actual >= c_frame_time_target) {
-      digitalWrite(c_overrun_led_pin, HIGH);
-    }
-    else {
-      digitalWrite(c_overrun_led_pin, LOW);
-    }
+      if (t_frame_actual >= c_frame_time_target) {
+        digitalWrite(c_overrun_led_pin, HIGH);
+      }
+      else {
+        digitalWrite(c_overrun_led_pin, LOW);
+      }
 
-    /* if data was requested, send data back */
-    if (f_data_requested) {
       Serial.write(x_databuffer, sizeof(x_databuffer));
       f_data_requested = FALSE;
     }
-  } /* end of 'if frame time reached' condition */
+  }
 }
 
 int read_inputs(byte buff[]) {

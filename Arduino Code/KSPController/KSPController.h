@@ -1,7 +1,7 @@
 /* Definitions */
 #define TRUE 1
 #define FALSE 0
-//#define DEBUG                /* This flag will enable debug code forcing write direct to serial out ignoring panel connection */
+// #define DEBUG                /* This flag will enable debug code forcing write direct to serial out ignoring panel connection */
 
 /* Variables */
 byte x_databuffer[19];                  /* byte buffer for managing outputs */

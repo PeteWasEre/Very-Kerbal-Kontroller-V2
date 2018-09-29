@@ -17,9 +17,9 @@ def is_set(val, pos):
 def map_flt_ctl(ctl_raw, db, trim, fine):
     ctl = ctl_raw / 255 * 2 - 1
     if abs(ctl) < db:
-        return (0,trim * fine)
+        return 0, trim * fine
     else:
-        return (ctl,((ctl - abs(ctl) / ctl * db) / (1 - db) + trim) * fine)
+        return ctl, ((ctl - abs(ctl) / ctl * db) / (1 - db) + trim) * fine
 
 
 # returns the length of a position vector
@@ -47,7 +47,8 @@ class SubframeLabel:
         self.data_labels = []
         for i in range(len(labels)):
             self.data_labels.append(StringVar())
-            ttk.Label(self.frame_name, textvariable=self.data_labels[i], style='Display.TLabel').grid(column=1, row=i, sticky=W)
+            ttk.Label(self.frame_name, textvariable=self.data_labels[i], style='Display.TLabel')\
+                .grid(column=1, row=i, sticky=W)
 
     def pack(self):
         self.frame_name.pack(anchor=N, expand=1, fill=X)
