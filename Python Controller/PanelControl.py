@@ -22,6 +22,7 @@ def panel_control(data_array, mq):
     sas_overide = 0
     gear_status = 0
     heartbeat = 0
+    f_flight_scene_msg = False
 
     # STATE = PANEL CONN - Connect to the panel
     while n_program_state == 1:
@@ -55,12 +56,16 @@ def panel_control(data_array, mq):
 
             # STATE = LINKING - Link to the active Vessel
             if n_program_state == 3:
+                # Ensure the GUI knows we are connecting or reconnecting
+                data_array[0] = 0
                 # Send data to the arduino but request no action  - command byte = 0x00
                 ba_output_buffer = bytearray([0x00])
                 ser.write(ba_output_buffer)
 
                 if conn.krpc.current_game_scene == conn.krpc.current_game_scene.flight:
                     mq.put((0, 'Connecting to the vessel....'))
+                    f_flight_scene_msg = False
+
                     try:
                         vessel = conn.space_center.active_vessel
                         mq.put((0, 'Linked to ' + vessel.name))
@@ -68,9 +73,15 @@ def panel_control(data_array, mq):
                     except krpc.client.RPCError:
                         mq.put((1, 'Could not connect to a vessel'))
                         pass
+                elif f_flight_scene_msg is False:
+                    mq.put((1, 'Waiting for flight scene'))
+                    f_flight_scene_msg = True
 
             # STATE = Perform CNIA
             if n_program_state == 4:
+                # Ensure the GUI knows we are connecting or reconnecting
+                data_array[0] = 0
+                # Add a status update
                 mq.put((0, 'Starting CNIA...'))
                 cnia_repeat = True
 
@@ -95,6 +106,9 @@ def panel_control(data_array, mq):
 
             # STATE = Streams and objects- setup data input streams and reused objects
             if n_program_state == 5:
+                # Ensure the GUI knows we are connecting or reconnecting
+                data_array[0] = 0
+
                 # Camera object
                 cam = conn.space_center.camera
 
@@ -351,7 +365,7 @@ def panel_control(data_array, mq):
                         for i in range(len(ba_input_buffer)):
                             data_array[i] = ba_input_buffer[i]
 
-                        # add a heartbeat to the status bit so the GUI can tell if we are alive
+                        # add a heartbeat so the GUI can tell if we are alive
                         heartbeat = (heartbeat + 1) % 8
                         data_array[20] = heartbeat
 

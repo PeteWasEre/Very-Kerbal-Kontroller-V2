@@ -68,10 +68,10 @@ class Application:
             column=1, row=0, padx=5, pady=3)
         self.panel_status_button = ttk.Label(self.buttonframe, textvariable=self.panel_status, width=22,
                                              style='Ind.TLabel', relief='raised').grid(
-            column=1, row=1, padx=4, pady=6, ipady = 3)
+            column=1, row=1, padx=4, pady=6, ipady=3)
         ttk.Button(self.buttonframe, text='Exit',
                    command=lambda: self.exit(root, data_array, msgq), width=10).grid(
-            column=2, row=0, rowspan = 2, padx=15, pady=3, ipady = 20)
+            column=2, row=0, rowspan=2, padx=15, pady=3, ipady=20)
 
         self.buttonframe.pack(anchor=N, expand=1, fill=X)
 
@@ -162,7 +162,11 @@ class Application:
                 else:  # if it is increasing, reset the counter
                     self.discon_counter = 0
 
-                if self.discon_counter >= 20:  # if the counter exceed the limit, trigger the disconnect.
+                # So it seems that the KRPC module may pause in a shift back the to space center or other non flight
+                # scene. This means the data stops flowing but it is still in the flight scene mode so the code
+                # in panel control doesnt set the status bit back to 0 for a while, hence the higher than expected
+                # disconnect limit.
+                if self.discon_counter >= 200:  # if the counter exceed the limit, trigger the disconnect.
                     self.connect_panel(data_array, msgq)
 
             self.status_prev = data_array[20]  # keep the previous status byte for comparison.
