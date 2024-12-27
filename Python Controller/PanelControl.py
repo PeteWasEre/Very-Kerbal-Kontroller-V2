@@ -28,7 +28,7 @@ def panel_control(data_array, mq):
     while n_program_state == 1:
         mq.put((0, 'Connecting to the panel....'))
         try:
-            ser = serial.Serial('COM3', 115200, timeout=0.1)
+            ser = serial.Serial('COM4', 115200, timeout=0.1)
             mq.put((0, 'Connected to the panel'))
             time.sleep(3)  # serial needs a  bit of time to initialise, otherwise later code - esp CNIA fails
             n_program_state = 2
@@ -262,7 +262,13 @@ def panel_control(data_array, mq):
                             conn.space_center.quickload()
 
                         if is_set(ba_input_buffer[7], 5) and not is_set(ba_input_buffer_prev[7], 5):
-                            conn.krpc.paused = not conn.krpc.paused
+                            if conn.krpc.paused:
+                                conn.krpc.paused = False
+                                #  trigger a reconnect on unpausing
+                                n_program_state = 3
+
+                            else:
+                                conn.krpc.paused = True
 
                         # Warp
                         if is_set(ba_input_buffer[8], 5):
